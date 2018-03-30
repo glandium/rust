@@ -9,7 +9,9 @@
 // except according to those terms.
 
 use std::borrow::Cow;
+use std::fmt::Debug;
 use std::mem::size_of;
+use std::ptr;
 use std::{usize, isize, panic};
 use std::vec::{Drain, IntoIter};
 use std::collections::CollectionAllocErr::*;
@@ -1171,4 +1173,38 @@ fn test_try_reserve_exact() {
         } else { panic!("usize::MAX should trigger an overflow!") }
     }
 
+}
+
+#[test]
+fn test_from_elem() {
+
+    // Note this doesn't test whether the optimization from SpecFromElem happens,
+    // but that we get the expected result.
+
+    fn test_for<T: PartialEq + Clone + Debug>(value: T) {
+        let v: Vec<T> = vec![value.clone(); 42];
+        for a in v {
+            assert_eq!(a, value);
+        }
+    }
+
+    test_for(0u8);
+    test_for(0u16);
+    test_for(0u32);
+    test_for(0u64);
+    test_for(0usize);
+    test_for(0i8);
+    test_for(0i16);
+    test_for(0i32);
+    test_for(0i64);
+    test_for(0isize);
+    test_for(0.0f32);
+    test_for(0.0f64);
+    test_for::<*const u8>(ptr::null());
+    test_for::<*mut u8>(ptr::null_mut());
+    test_for::<Option<u8>>(None);
+    test_for::<Option<Box<usize>>>(None);
+    // The following is specifically no backed by zeroes, and we expect SpecFromElem
+    // won't initialize it from zeroes.
+    test_for::<Option<char>>(None);
 }

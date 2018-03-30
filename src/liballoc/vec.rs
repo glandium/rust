@@ -1630,6 +1630,23 @@ unsafe impl<T: ?Sized> IsZero for *mut T {
     }
 }
 
+unsafe impl<T> IsZero for Option<T> {
+    #[inline]
+    fn is_zero(&self) -> bool {
+        if self.is_none() {
+            // Not all Option<T>'s None are represented with zeroes, so check that
+            // a zeroed Option<T> is, indeed, None.
+            // The compiler should be able to figure all this out statically at
+            // compile time.
+            let a: Option<T> = unsafe { mem::zeroed() };
+            let result = a.is_none();
+            mem::forget(a);
+            result
+        } else {
+            false
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Common trait implementations for Vec
