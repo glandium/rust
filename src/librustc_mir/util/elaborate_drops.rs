@@ -12,7 +12,6 @@ use std::fmt;
 use rustc::hir;
 use rustc::mir::*;
 use rustc::middle::const_val::ConstVal;
-use rustc::middle::lang_items;
 use rustc::ty::{self, Ty, TyCtxt};
 use rustc::ty::subst::{Kind, Substs};
 use rustc::ty::util::IntTypeExt;
@@ -335,23 +334,6 @@ impl<'l, 'b, 'tcx, D> DropCtxt<'l, 'b, 'tcx, D>
 
         let (succ, unwind) = self.drop_ladder_bottom();
         self.drop_ladder(fields, succ, unwind).0
-    }
-
-    fn open_drop_for_box<'a>(&mut self, ty: Ty<'tcx>) -> BasicBlock
-    {
-        debug!("open_drop_for_box({:?}, {:?})", self, ty);
-
-        let interior = self.place.clone().deref();
-        let interior_path = self.elaborator.deref_subpath(self.path);
-
-        let succ = self.succ; // FIXME(#43234)
-        let unwind = self.unwind;
-        let succ = self.box_free_block(ty, succ, unwind);
-        let unwind_succ = self.unwind.map(|unwind| {
-            self.box_free_block(ty, unwind, Unwind::InCleanup)
-        });
-
-        self.drop_subpath(&interior, interior_path, succ, unwind_succ)
     }
 
     fn open_drop_for_adt<'a>(&mut self, adt: &'tcx ty::AdtDef, substs: &'tcx Substs<'tcx>)
@@ -791,9 +773,6 @@ impl<'l, 'b, 'tcx, D> DropCtxt<'l, 'b, 'tcx, D>
             ty::TyTuple(tys) => {
                 self.open_drop_for_tuple(tys)
             }
-            ty::TyAdt(def, _) if def.is_box() => {
-                self.open_drop_for_box(ty.boxed_ty())
-            }
             ty::TyAdt(def, substs) => {
                 self.open_drop_for_adt(def, substs)
             }
@@ -854,40 +833,6 @@ impl<'l, 'b, 'tcx, D> DropCtxt<'l, 'b, 'tcx, D>
         let blk = self.drop_block(succ, unwind);
         self.elaborate_drop(blk);
         blk
-    }
-
-    fn box_free_block<'a>(
-        &mut self,
-        ty: Ty<'tcx>,
-        target: BasicBlock,
-        unwind: Unwind,
-    ) -> BasicBlock {
-        let block = self.unelaborated_free_block(ty, target, unwind);
-        self.drop_flag_test_block(block, target, unwind)
-    }
-
-    fn unelaborated_free_block<'a>(
-        &mut self,
-        ty: Ty<'tcx>,
-        target: BasicBlock,
-        unwind: Unwind
-    ) -> BasicBlock {
-        let tcx = self.tcx();
-        let unit_temp = Place::Local(self.new_temp(tcx.mk_nil()));
-        let free_func = tcx.require_lang_item(lang_items::BoxFreeFnLangItem);
-        let substs = tcx.mk_substs(iter::once(Kind::from(ty)));
-
-        let call = TerminatorKind::Call {
-            func: Operand::function_handle(tcx, free_func, substs, self.source_info.span),
-            args: vec![Operand::Move(self.place.clone())],
-            destination: Some((unit_temp, target)),
-            cleanup: None
-        }; // FIXME(#43234)
-        let free_block = self.new_block(unwind, call);
-
-        let block_start = Location { block: free_block, statement_index: 0 };
-        self.elaborator.clear_drop_flag(block_start, self.path, DropFlagMode::Shallow);
-        free_block
     }
 
     fn drop_block<'a>(&mut self, target: BasicBlock, unwind: Unwind) -> BasicBlock {

@@ -67,6 +67,8 @@ use core::ops::{CoerceUnsized, Deref, DerefMut, Generator, GeneratorState};
 use core::ptr::{self, NonNull, Unique};
 use core::convert::From;
 
+#[cfg(not(stage0))]
+use alloc::box_free;
 use raw_vec::RawVec;
 use str::from_boxed_utf8_unchecked;
 
@@ -242,7 +244,11 @@ impl<T: ?Sized> Box<T> {
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<#[may_dangle] T: ?Sized> Drop for Box<T> {
     fn drop(&mut self) {
-        // FIXME: Do nothing, drop is currently performed by compiler.
+        #[cfg(not(stage0))]
+        unsafe {
+            let Box(ref unique) = self;
+            box_free(unique.as_ptr())
+        }
     }
 }
 
