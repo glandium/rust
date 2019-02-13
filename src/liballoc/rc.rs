@@ -248,6 +248,7 @@ use core::convert::From;
 use core::usize;
 
 use crate::alloc::{Global, Alloc, Layout, box_free, handle_alloc_error};
+use crate::boxed::stage0_phantom;
 use crate::string::String;
 use crate::vec::Vec;
 
@@ -713,7 +714,7 @@ impl<T: ?Sized> Rc<T> {
                 value_size);
 
             // Free the allocation without dropping its contents
-            box_free(box_unique);
+            box_free::<_, Global>(box_unique, stage0_phantom(Global));
 
             Rc { ptr: NonNull::new_unchecked(ptr), phantom: PhantomData }
         }
